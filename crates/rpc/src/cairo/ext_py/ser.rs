@@ -33,8 +33,8 @@ pub(crate) enum ChildCommand<'a> {
         common: CommonProperties<'a>,
 
         // zero means use the gas price from the block.
-        #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
-        gas_price: &'a ethers::types::H256,
+        #[serde_as(as = "&pathfinder_serde::U256AsHexStr")]
+        gas_price: &'a ethers::types::U256,
         transactions: &'a [TransactionAndClassHashHint],
     },
     SimulateTx {
@@ -42,8 +42,8 @@ pub(crate) enum ChildCommand<'a> {
         common: CommonProperties<'a>,
 
         // zero means use the gas price from the block.
-        #[serde_as(as = "&pathfinder_serde::H256AsHexStr")]
-        gas_price: &'a ethers::types::H256,
+        #[serde_as(as = "&pathfinder_serde::U256AsHexStr")]
+        gas_price: &'a ethers::types::U256,
         transactions: &'a [TransactionAndClassHashHint],
         skip_validate: &'a bool,
     },

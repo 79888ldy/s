@@ -5947,6 +5947,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "stark_hash",
+ "starknet-contract-class",
  "starknet-gateway-client",
  "starknet-gateway-test-fixtures",
  "starknet-gateway-types",
@@ -7590,6 +7591,7 @@ version = "0.1.0"
 dependencies = [
  "assert_matches",
  "bitvec 0.20.4",
+ "cairo-felt 0.2.2",
  "criterion",
  "fake",
  "hex",

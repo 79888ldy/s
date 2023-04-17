@@ -35,6 +35,7 @@ starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures", optional = true }
 starknet-gateway-types = { path = "../gateway-types" }
 starknet-rs = { git = "https://github.com/kkovaacs/starknet_in_rust", branch = "merged" }
+starknet-contract-class = { git = "https://github.com/kkovaacs/starknet_in_rust", package = "starknet-contract-class", branch = "merged" }
 starknet_api = { git = "https://github.com/lambdaclass/starknet-api", branch = "main" }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["process"] }

@@ -38,20 +38,7 @@ pub async fn estimate_fee(
     context: RpcContext,
     input: EstimateFeeInput,
 ) -> Result<Vec<FeeEstimate>, EstimateFeeError> {
-    let (handle, gas_price, when, pending_timestamp, pending_update) =
-        prepare_handle_and_block(&context, input.block_id).await?;
-
-    let result = handle
-        .estimate_fee(
-            input.request,
-            when,
-            gas_price,
-            pending_update,
-            pending_timestamp,
-        )
-        .await?;
-
-    Ok(result)
+    unimplemented!()
 }
 
 #[cfg(test)]
@@ -148,7 +135,7 @@ mod tests {
     mod ext_py {
         use super::*;
         use crate::v02::method::estimate_fee::tests::ext_py::{
-            test_context_with_call_handling, valid_invoke_v1, BLOCK_5,
+            test_context, valid_invoke_v1, BLOCK_5,
         };
         use crate::v02::types::request::{
             BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
@@ -159,8 +146,7 @@ mod tests {
 
         #[tokio::test]
         async fn no_such_block() {
-            let (_db_dir, context, _join_handle, account_address, _) =
-                test_context_with_call_handling().await;
+            let (_db_dir, context, account_address, _) = test_context().await;
 
             let input = EstimateFeeInput {
                 request: vec![valid_invoke_v1(account_address)],
@@ -172,8 +158,7 @@ mod tests {
 
         #[tokio::test]
         async fn no_such_contract() {
-            let (_db_dir, context, _join_handle, account_address, _) =
-                test_context_with_call_handling().await;
+            let (_db_dir, context, account_address, _) = test_context().await;
 
             let mainnet_invoke = valid_invoke_v1(account_address)
                 .into_invoke()
@@ -195,8 +180,7 @@ mod tests {
 
         #[tokio::test]
         async fn successful_invoke_v1() {
-            let (_db_dir, context, _join_handle, account_address, latest_block_hash) =
-                test_context_with_call_handling().await;
+            let (_db_dir, context, account_address, latest_block_hash) = test_context().await;
 
             let transaction0 = valid_invoke_v1(account_address);
             let transaction1 = BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
@@ -220,8 +204,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn successful_declare_v1() {
-            let (_db_dir, context, _join_handle, account_address, latest_block_hash) =
-                test_context_with_call_handling().await;
+            let (_db_dir, context, account_address, latest_block_hash) = test_context().await;
 
             let contract_class = {
                 let compressed_json =
@@ -254,8 +237,7 @@ mod tests {
 
         #[test_log::test(tokio::test)]
         async fn successful_declare_v2() {
-            let (_db_dir, context, _join_handle, account_address, latest_block_hash) =
-                test_context_with_call_handling().await;
+            let (_db_dir, context, account_address, latest_block_hash) = test_context().await;
 
             let contract_class: SierraContractClass = {
                 let definition = starknet_gateway_test_fixtures::zstd_compressed_contracts::CAIRO_1_0_0_ALPHA6_SIERRA;
