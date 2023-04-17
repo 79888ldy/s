@@ -12,6 +12,7 @@ test-utils = ["dep:reqwest", "dep:starknet-gateway-test-fixtures", "tokio/test-u
 [dependencies]
 anyhow = { workspace = true }
 base64 = "0.13.1"
+cairo-felt = { git = "https://github.com/lambdaclass/cairo-rs", package = "cairo-felt", rev = "eebfd612c5f969c759cb982e8fb777b2a1a1dab0" }
 ethers = "1.0.2"
 flate2 = "1.0.25"
 futures = { version = "0.3", default-features = false, features = ["std"] }
@@ -33,6 +34,8 @@ stark_hash = { path = "../stark_hash" }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures", optional = true }
 starknet-gateway-types = { path = "../gateway-types" }
+starknet-rs = { git = "https://github.com/kkovaacs/starknet_in_rust", branch = "merged" }
+starknet_api = { git = "https://github.com/lambdaclass/starknet-api", branch = "main" }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["process"] }
 tower = { version = "0.4.13", default-features = false, features = ["filter", "util"] }
