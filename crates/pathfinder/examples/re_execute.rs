@@ -1,10 +1,8 @@
 use anyhow::Context;
-use pathfinder_common::{Chain, StarknetBlockHash, StarknetBlockNumber};
+use pathfinder_common::{ChainId, StarknetBlockNumber};
 use pathfinder_storage::{
     JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
 };
-use stark_hash::Felt;
-use starknet_gateway_types::reply::{Block, Status, transaction::Transaction};
 
 /// Verify block hashes in a pathfinder database.
 ///
@@ -16,10 +14,11 @@ use starknet_gateway_types::reply::{Block, Status, transaction::Transaction};
 /// Either mainnet or goerli is accepted as the chain name.
 fn main() -> anyhow::Result<()> {
     let chain_name = std::env::args().nth(1).unwrap();
-    let chain = match chain_name.as_str() {
-        "mainnet" => Chain::Mainnet,
-        "goerli" => Chain::Testnet,
-        "integration" => Chain::Integration,
+    let chain_id = match chain_name.as_str() {
+        "mainnet" => ChainId::MAINNET,
+        "testnet" => ChainId::TESTNET,
+        "testnet2" => ChainId::TESTNET2,
+        "integration" => ChainId::INTEGRATION,
         _ => panic!("Expected chain name: mainnet/goerli/integration"),
     };
 
@@ -44,9 +43,15 @@ fn main() -> anyhow::Result<()> {
         drop(tx);
 
         let (transactions, _): (Vec<_>, Vec<_>) = transactions_and_receipts.into_iter().unzip();
+
+        let result = pathfinder_rpc::cairo::starknet_rs::estimate_fee_for_gateway_transactions(
+            storage.clone(),
+            block.storage_commitment,
+            transactions,
+            chain_id,
+            block.gas_price.0.into(),
+        )?;
     }
 
     Ok(())
 }
-
-fn map_transaction(tx: Transaction)

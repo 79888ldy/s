@@ -30,7 +30,8 @@ use starknet_rs::starknet_storage::errors::storage_errors::StorageError;
 
 use crate::v02::types::request::BroadcastedTransaction;
 
-pub(crate) enum CallError {
+#[derive(Debug)]
+pub enum CallError {
     ContractNotFound,
     InvalidMessageSelector,
     Internal(anyhow::Error),
@@ -114,7 +115,7 @@ pub(crate) fn call(
     Ok(result)
 }
 
-pub(crate) struct FeeEstimate {
+pub struct FeeEstimate {
     pub gas_consumed: U256,
     pub gas_price: U256,
     pub overall_fee: U256,
@@ -139,6 +140,35 @@ pub(crate) fn estimate_fee(
         chain_id,
         gas_price,
     )
+}
+
+pub fn estimate_fee_for_gateway_transactions(
+    storage: pathfinder_storage::Storage,
+    storage_commitment: StorageCommitment,
+    transactions: Vec<starknet_gateway_types::reply::transaction::Transaction>,
+    chain_id: ChainId,
+    gas_price: U256,
+) -> anyhow::Result<Vec<FeeEstimate>> {
+    let mut db = storage.connection().map_err(map_anyhow_to_state_err)?;
+    let db_tx = db.transaction().map_err(map_sqlite_to_state_err)?;
+
+    let transactions = transactions
+        .into_iter()
+        .map(|tx| map_gateway_transaction(tx, chain_id, &db_tx))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    drop(db_tx);
+
+    let result = estimate_fee_impl(
+        storage,
+        storage_commitment,
+        transactions,
+        chain_id,
+        gas_price,
+    )
+    .map_err(|e| anyhow::anyhow!("Estimate fee failed: {:?}", e))?;
+
+    Ok(result)
 }
 
 fn estimate_fee_impl(

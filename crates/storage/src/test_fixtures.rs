@@ -13,7 +13,7 @@ use crate::{
 use pathfinder_common::{
     CasmHash, ClassHash, ContractAddress, ContractNonce, GasPrice, SequencerAddress, SierraHash,
     StarknetBlockHash, StarknetBlockNumber, StarknetBlockTimestamp, StateCommitment,
-    StorageAddress, StorageValue,
+    StorageAddress, StorageCommitment, StorageValue,
 };
 use rusqlite::Transaction;
 use stark_hash::Felt;
@@ -103,6 +103,7 @@ impl StarknetBlock {
             sequencer_address: SequencerAddress(hash!(2, n)),
             transaction_commitment: None,
             event_commitment: None,
+            storage_commitment: StorageCommitment(hash!(1, n)),
         }
     }
 }

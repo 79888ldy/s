@@ -294,7 +294,7 @@ impl StarknetBlocksTable {
 
                 let hash = row.get_unwrap("hash");
 
-                let state_commitment = row.get_unwrap("root");
+                let storage_commitment = row.get_unwrap("root");
 
                 let timestamp = row.get_unwrap("timestamp");
 
@@ -310,7 +310,7 @@ impl StarknetBlocksTable {
                 let class_commitment = row
                     .get_unwrap::<_, Option<_>>("class_commitment")
                     .unwrap_or(ClassCommitment::ZERO);
-                let root = StateCommitment::calculate(state_commitment, class_commitment);
+                let root = StateCommitment::calculate(storage_commitment, class_commitment);
 
                 let block = StarknetBlock {
                     number,
@@ -321,6 +321,7 @@ impl StarknetBlocksTable {
                     sequencer_address,
                     transaction_commitment,
                     event_commitment,
+                    storage_commitment,
                 };
 
                 Ok(Some(block))
@@ -1302,6 +1303,7 @@ pub struct StarknetBlock {
     pub sequencer_address: SequencerAddress,
     pub transaction_commitment: Option<TransactionCommitment>,
     pub event_commitment: Option<EventCommitment>,
+    pub storage_commitment: StorageCommitment,
 }
 
 /// StarknetVersionsTable tracks `starknet_versions` table, which just interns the version
@@ -2161,6 +2163,7 @@ mod tests {
                         sequencer_address: blocks[0].block.sequencer_address,
                         transaction_commitment: Some(TransactionCommitment(Felt::ZERO)),
                         event_commitment: Some(EventCommitment(Felt::ZERO)),
+                        storage_commitment: StorageCommitment(Felt::ZERO),
                     };
 
                     assert_eq!(
@@ -2441,6 +2444,7 @@ mod tests {
                 sequencer_address: SequencerAddress(felt!("0x1234")),
                 transaction_commitment: None,
                 event_commitment: None,
+                storage_commitment: StorageCommitment(felt!("0x1234")),
             };
 
             // Note: hashes are reverse ordered to trigger the sorting bug.

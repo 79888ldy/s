@@ -43,6 +43,7 @@ pub(crate) fn create_blocks() -> [BlockWithCommitment; NUM_BLOCKS] {
                     sequencer_address: SequencerAddress(index_as_felt),
                     transaction_commitment: Some(TransactionCommitment(index_as_felt)),
                     event_commitment: Some(EventCommitment(index_as_felt)),
+                    storage_commitment,
                 },
                 class_commitment,
                 storage_commitment,

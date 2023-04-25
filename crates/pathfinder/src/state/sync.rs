@@ -552,6 +552,7 @@ async fn l2_update(
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
             transaction_commitment: Some(tx_commitment),
             event_commitment: Some(ev_commitment),
+            storage_commitment: new_storage_commitment,
         };
         StarknetBlocksTable::insert(
             &transaction,
@@ -1309,6 +1310,7 @@ mod tests {
             sequencer_address: SequencerAddress(Felt::ZERO),
             transaction_commitment: None,
             event_commitment: None,
+            storage_commitment: *STORAGE_COMMITMENT0,
         };
         pub static ref STORAGE_BLOCK1: StarknetBlock = StarknetBlock {
             number: StarknetBlockNumber::new_or_panic(1),
@@ -1319,6 +1321,7 @@ mod tests {
             sequencer_address: SequencerAddress(Felt::from_be_bytes([1u8; 32]).unwrap()),
             transaction_commitment: None,
             event_commitment: None,
+            storage_commitment: *STORAGE_COMMITMENT1,
         };
         // Causes root to remain unchanged
         pub static ref STATE_UPDATE0: reply::StateUpdate = reply::StateUpdate {

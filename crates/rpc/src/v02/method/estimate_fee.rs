@@ -410,6 +410,7 @@ pub(crate) mod tests {
                 sequencer_address: SequencerAddress(Felt::ZERO),
                 transaction_commitment: None,
                 event_commitment: None,
+                storage_commitment: new_storage_commitment,
             };
 
             pathfinder_storage::StarknetBlocksTable::insert(
