@@ -129,9 +129,25 @@ pub(crate) fn estimate_fee(
 ) -> Result<Vec<FeeEstimate>, CallError> {
     let transactions = transactions
         .into_iter()
-        .map(|tx| map_transaction(tx, chain_id))
+        .map(|tx| map_broadcasted_transaction(tx, chain_id))
         .collect::<Result<Vec<_>, TransactionError>>()?;
 
+    estimate_fee_impl(
+        storage,
+        storage_commitment,
+        transactions,
+        chain_id,
+        gas_price,
+    )
+}
+
+fn estimate_fee_impl(
+    storage: pathfinder_storage::Storage,
+    storage_commitment: StorageCommitment,
+    transactions: Vec<Transaction>,
+    chain_id: ChainId,
+    gas_price: U256,
+) -> Result<Vec<FeeEstimate>, CallError> {
     let state_reader = SqliteReader {
         storage: storage,
         storage_commitment,
@@ -193,7 +209,7 @@ impl Transaction {
     }
 }
 
-fn map_transaction(
+fn map_broadcasted_transaction(
     transaction: BroadcastedTransaction,
     chain_id: ChainId,
 ) -> Result<Transaction, TransactionError> {
@@ -268,6 +284,165 @@ fn map_transaction(
                 chain_id.0.into(),
             )?;
             Ok(Transaction::DeployAccount(tx))
+        }
+    }
+}
+
+fn map_gateway_transaction(
+    transaction: starknet_gateway_types::reply::transaction::Transaction,
+    chain_id: ChainId,
+    db_transaction: &rusqlite::Transaction<'_>,
+) -> anyhow::Result<Transaction> {
+    use starknet_rs::utils::Address;
+
+    match transaction {
+        starknet_gateway_types::reply::transaction::Transaction::Declare(tx) => match tx {
+            starknet_gateway_types::reply::transaction::DeclareTransaction::V0(tx) => {
+                let signature = tx.signature.into_iter().map(|s| s.0.into()).collect();
+
+                // decode program
+                let contract_class =
+                    ContractCodeTable::get_class_raw(db_transaction, tx.class_hash)?
+                        .context("Fetching class definition")?;
+                let contract_class =
+                    starknet_rs::services::api::contract_class::ContractClass::try_from(
+                        String::from_utf8_lossy(&contract_class).as_ref(),
+                    )
+                    .map_err(|_| TransactionError::MissigContractClass)?;
+
+                let tx = InternalDeclare::new(
+                    contract_class,
+                    chain_id.0.into(),
+                    Address(tx.sender_address.get().into()),
+                    // FIXME: we're truncating to lower 64 bits
+                    u64::from_be_bytes(tx.max_fee.0.to_be_bytes()[24..].try_into().unwrap()),
+                    0,
+                    signature,
+                    tx.nonce.0.into(),
+                )?;
+                Ok(Transaction::Declare(tx))
+            }
+            starknet_gateway_types::reply::transaction::DeclareTransaction::V1(tx) => {
+                let signature = tx.signature.into_iter().map(|s| s.0.into()).collect();
+
+                // decode program
+                let contract_class =
+                    ContractCodeTable::get_class_raw(db_transaction, tx.class_hash)?
+                        .context("Fetching class definition")?;
+                let contract_class =
+                    starknet_rs::services::api::contract_class::ContractClass::try_from(
+                        String::from_utf8_lossy(&contract_class).as_ref(),
+                    )
+                    .map_err(|_| TransactionError::MissigContractClass)?;
+
+                let tx = InternalDeclare::new(
+                    contract_class,
+                    chain_id.0.into(),
+                    Address(tx.sender_address.get().into()),
+                    // FIXME: we're truncating to lower 64 bits
+                    u64::from_be_bytes(tx.max_fee.0.to_be_bytes()[24..].try_into().unwrap()),
+                    1,
+                    signature,
+                    tx.nonce.0.into(),
+                )?;
+                Ok(Transaction::Declare(tx))
+            }
+            starknet_gateway_types::reply::transaction::DeclareTransaction::V2(_) => todo!(),
+        },
+        starknet_gateway_types::reply::transaction::Transaction::Deploy(tx) => {
+            let constructor_calldata = tx
+                .constructor_calldata
+                .into_iter()
+                .map(|p| p.0.into())
+                .collect();
+
+            let contract_class = ContractCodeTable::get_class_raw(db_transaction, tx.class_hash)?
+                .context("Fetching class definition")?;
+            let contract_class =
+                starknet_rs::services::api::contract_class::ContractClass::try_from(
+                    String::from_utf8_lossy(&contract_class).as_ref(),
+                )
+                .map_err(|_| TransactionError::MissigContractClass)?;
+
+            let tx = InternalDeploy::new(
+                Address(tx.contract_address_salt.0.into()),
+                contract_class,
+                constructor_calldata,
+                chain_id.0.into(),
+                // FIXME: truncate
+                tx.version.without_query_version() as u64,
+            )?;
+            Ok(Transaction::Deploy(tx))
+        }
+        starknet_gateway_types::reply::transaction::Transaction::DeployAccount(tx) => {
+            let constructor_calldata = tx
+                .constructor_calldata
+                .into_iter()
+                .map(|p| p.0.into())
+                .collect();
+            let signature = tx.signature.into_iter().map(|s| s.0.into()).collect();
+            let tx = InternalDeployAccount::new(
+                tx.class_hash.0.to_be_bytes(),
+                // FIXME: we're truncating to lower 64 bits
+                u64::from_be_bytes(tx.max_fee.0.to_be_bytes()[24..].try_into().unwrap()),
+                // FIXME: we're truncating to lower 64 bits
+                u64::from_be_bytes(tx.version.0.as_bytes()[24..].try_into().unwrap()),
+                tx.nonce.0.into(),
+                constructor_calldata,
+                signature,
+                Address(tx.contract_address_salt.0.into()),
+                chain_id.0.into(),
+            )?;
+            Ok(Transaction::DeployAccount(tx))
+        }
+        starknet_gateway_types::reply::transaction::Transaction::Invoke(tx) => match tx {
+            starknet_gateway_types::reply::transaction::InvokeTransaction::V0(tx) => {
+                let calldata = tx.calldata.into_iter().map(|p| p.0.into()).collect();
+                let signature = tx.signature.into_iter().map(|s| s.0.into()).collect();
+
+                let tx = InternalInvokeFunction::new(
+                    Address(tx.sender_address.get().into()),
+                    tx.entry_point_selector.0.into(),
+                    // FIXME: we're truncating to lower 64 bits
+                    u64::from_be_bytes(tx.max_fee.0.to_be_bytes()[24..].try_into().unwrap()),
+                    calldata,
+                    signature,
+                    chain_id.0.into(),
+                    None,
+                )?;
+                Ok(Transaction::Invoke(tx))
+            }
+            starknet_gateway_types::reply::transaction::InvokeTransaction::V1(tx) => {
+                let calldata = tx.calldata.into_iter().map(|p| p.0.into()).collect();
+                let signature = tx.signature.into_iter().map(|s| s.0.into()).collect();
+
+                let tx = InternalInvokeFunction::new(
+                    Address(tx.sender_address.get().into()),
+                    starknet_rs::definitions::constants::EXECUTE_ENTRY_POINT_SELECTOR.clone(),
+                    // FIXME: we're truncating to lower 64 bits
+                    u64::from_be_bytes(tx.max_fee.0.to_be_bytes()[24..].try_into().unwrap()),
+                    calldata,
+                    signature,
+                    chain_id.0.into(),
+                    Some(tx.nonce.0.into()),
+                )?;
+                Ok(Transaction::Invoke(tx))
+            }
+        },
+        starknet_gateway_types::reply::transaction::Transaction::L1Handler(tx) => {
+            let calldata = tx.calldata.into_iter().map(|p| p.0.into()).collect();
+            let signature = vec![];
+
+            let tx = InternalInvokeFunction::new(
+                Address(tx.contract_address.get().into()),
+                tx.entry_point_selector.0.into(),
+                0,
+                calldata,
+                signature,
+                chain_id.0.into(),
+                Some(tx.nonce.0.into()),
+            )?;
+            Ok(Transaction::Invoke(tx))
         }
     }
 }

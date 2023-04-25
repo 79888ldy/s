@@ -1,11 +1,10 @@
 use anyhow::Context;
 use pathfinder_common::{Chain, StarknetBlockHash, StarknetBlockNumber};
-use pathfinder_lib::state::block_hash::{verify_block_hash, VerifyResult};
 use pathfinder_storage::{
     JournalMode, StarknetBlocksBlockId, StarknetBlocksTable, StarknetTransactionsTable, Storage,
 };
 use stark_hash::Felt;
-use starknet_gateway_types::reply::{Block, Status};
+use starknet_gateway_types::reply::{Block, Status, transaction::Transaction};
 
 /// Verify block hashes in a pathfinder database.
 ///
@@ -49,3 +48,5 @@ fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+fn map_transaction(tx: Transaction)
