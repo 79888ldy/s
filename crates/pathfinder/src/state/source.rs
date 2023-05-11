@@ -15,49 +15,88 @@ use starknet_gateway_client::ClientApi;
 use starknet_gateway_types::error::StarknetErrorCode::BlockNotFound;
 use starknet_gateway_types::{error::SequencerError, reply::MaybePendingBlock};
 
-#[cfg(test)]
-pub mod ex {
-    use pathfinder_common::EthereumAddress;
-    use pathfinder_ethereum::{core_contract, EthereumClient};
-    use primitive_types::H160;
-    use starknet_gateway_client::Client;
+pub struct Source<T, C> {
+    tx: mpsc::Sender<T>,
+    rx: mpsc::Receiver<T>,
+    go: Arc<Notify>,
+    ctx: Arc<Mutex<C>>,
+}
 
-    use super::*;
-
-    const ETH_URL: &str = "https://eth.llamarpc.com";
-    const SEQ_URL: &str = "https://alpha-mainnet.starknet.io/gateway";
-
-    // TODO(SM): remove
-    // cargo test --package pathfinder --lib -- state::source::ex::example --exact --nocapture
-    #[tokio::test]
-    async fn example() -> anyhow::Result<()> {
-        let eth = StarknetEthereumClient::new(
-            EthereumClient::new(ETH_URL.parse().expect("url")),
-            EthereumAddress(H160::from_slice(&core_contract::MAINNET)),
-        );
-
-        let seq = Client::with_base_url(SEQ_URL.parse().expect("url"))?;
-
-        let sync = Arc::new(SyncState::default());
-        let chain = Chain::Mainnet;
-        let storage = Storage::in_memory()?;
-
-        let ctx = SyncContext::new(eth, seq, chain, sync, storage);
-
-        let poll = Duration::from_secs(30) / 10;
-        let src = Source::new(ctx);
-        src.add("L1", poll_l1, poll).await;
-        src.add("L2", poll_l2, poll).await;
-        src.add("sync", poll_status, poll).await;
-        // TODO(SM): add "pending"
-        let mut src = src.run();
-
-        while let Some(event) = src.get().await {
-            println!("{event:?}");
-        }
-
-        Ok(())
+impl<T: Send + 'static, C: Send + 'static> Source<T, C> {
+    pub fn new(ctx: C) -> Self {
+        let (tx, rx) = mpsc::channel(32);
+        let go = Arc::new(Notify::new());
+        let ctx = Arc::new(Mutex::new(ctx));
+        Self { tx, rx, go, ctx }
     }
+
+    pub async fn add<F, G>(&self, name: &str, f: F, poll: Duration)
+    where
+        F: (Fn(Arc<Mutex<C>>) -> G) + Send + 'static,
+        G: Future<Output = anyhow::Result<Option<T>>> + Send,
+    {
+        let name = name.to_owned();
+        let is_ready = Arc::new(Notify::new());
+
+        let tx = self.tx.clone();
+        let go = self.go.clone();
+        let ctx = self.ctx.clone();
+        let ready = is_ready.clone();
+        tokio::spawn(async move {
+            ready.notify_one();
+            go.notified().await;
+            while !tx.is_closed() {
+                let r = f(ctx.clone());
+                let r = r.await;
+                match r {
+                    Ok(Some(x)) => {
+                        let r = tx.send(x).await;
+                        if r.is_err() {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(name=name, reason=?e, "Poll failed");
+                    }
+                    _ => (),
+                }
+                tokio::time::sleep(poll).await;
+            }
+        });
+        is_ready.notified().await
+    }
+
+    pub fn run(self) -> Self {
+        self.go.notify_waiters();
+        self
+    }
+
+    pub fn stop(&mut self) {
+        self.rx.close()
+    }
+
+    pub async fn get(&mut self) -> Option<T> {
+        self.rx.recv().await
+    }
+}
+
+mod l2 {
+
+    #[derive(Debug)]
+    pub enum Event {
+        // handle: check commitments, resolve state, download classes, etc
+        Block(super::Block),
+
+        // handle: check if 'latest' matches current head, do a reorg if not
+        Head(super::Head),
+    }
+}
+
+#[derive(Debug)]
+enum Event {
+    Sync(syncing::Syncing),
+    L1(L1StateUpdate),
+    L2(l2::Event),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -190,89 +229,45 @@ async fn poll_status(
     ))))
 }
 
-// TODO(SM): split `sync` into event producer (stream?) and consumer (.reduce on stream?)
+#[cfg(test)]
+pub mod ex {
+    use pathfinder_common::EthereumAddress;
+    use pathfinder_ethereum::{core_contract, EthereumClient};
+    use primitive_types::H160;
+    use starknet_gateway_client::Client;
 
-mod l2 {
+    use super::*;
 
-    #[derive(Debug)]
-    pub enum Event {
-        // handle: check commitments, resolve state, download classes, etc
-        Block(super::Block),
+    const ETH_URL: &str = "https://eth.llamarpc.com";
+    const SEQ_URL: &str = "https://alpha-mainnet.starknet.io/gateway";
 
-        // handle: check if 'latest' matches current head, do a reorg if not
-        Head(super::Head),
-    }
-}
+    // cargo test --package pathfinder --lib -- state::source::ex::example --exact --nocapture
+    #[tokio::test]
+    async fn example() -> anyhow::Result<()> {
+        let eth = StarknetEthereumClient::new(
+            EthereumClient::new(ETH_URL.parse().expect("url")),
+            EthereumAddress(H160::from_slice(&core_contract::MAINNET)),
+        );
 
-#[derive(Debug)]
-enum Event {
-    Sync(syncing::Syncing),
-    L1(L1StateUpdate),
-    L2(l2::Event),
-    // Pending(...)
-}
+        let seq = Client::with_base_url(SEQ_URL.parse().expect("url"))?;
 
-pub struct Source<T, C> {
-    tx: mpsc::Sender<T>,
-    rx: mpsc::Receiver<T>,
-    go: Arc<Notify>,
-    ctx: Arc<Mutex<C>>,
-}
+        let sync = Arc::new(SyncState::default());
+        let chain = Chain::Mainnet;
+        let storage = Storage::in_memory()?;
 
-impl<T: Send + 'static, C: Send + 'static> Source<T, C> {
-    pub fn new(ctx: C) -> Self {
-        let (tx, rx) = mpsc::channel(32);
-        let go = Arc::new(Notify::new());
-        let ctx = Arc::new(Mutex::new(ctx));
-        Self { tx, rx, go, ctx }
-    }
+        let ctx = SyncContext::new(eth, seq, chain, sync, storage);
 
-    pub async fn add<F, G>(&self, name: &str, f: F, poll: Duration)
-    where
-        F: (Fn(Arc<Mutex<C>>) -> G) + Send + 'static,
-        G: Future<Output = anyhow::Result<Option<T>>> + Send,
-    {
-        let name = name.to_owned();
-        let is_ready = Arc::new(Notify::new());
+        let poll = Duration::from_secs(30) / 10;
+        let src = Source::new(ctx);
+        src.add("L1", poll_l1, poll).await;
+        src.add("L2", poll_l2, poll).await;
+        src.add("sync", poll_status, poll).await;
+        let mut src = src.run();
 
-        let tx = self.tx.clone();
-        let go = self.go.clone();
-        let ctx = self.ctx.clone();
-        let ready = is_ready.clone();
-        tokio::spawn(async move {
-            ready.notify_one();
-            go.notified().await;
-            while !tx.is_closed() {
-                let r = f(ctx.clone());
-                let r = r.await;
-                match r {
-                    Ok(Some(x)) => {
-                        let r = tx.send(x).await;
-                        if r.is_err() {
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(name=name, reason=?e, "Poll failed");
-                    }
-                    _ => (),
-                }
-                tokio::time::sleep(poll).await;
-            }
-        });
-        is_ready.notified().await
-    }
+        while let Some(event) = src.get().await {
+            println!("{event:?}");
+        }
 
-    pub fn run(self) -> Self {
-        self.go.notify_waiters();
-        self
-    }
-
-    pub fn stop(&mut self) {
-        self.rx.close()
-    }
-
-    pub async fn get(&mut self) -> Option<T> {
-        self.rx.recv().await
+        Ok(())
     }
 }
