@@ -388,6 +388,28 @@ pub(crate) mod tests {
             )
             .unwrap();
 
+            pathfinder_storage::CanonicalBlocksTable::insert(
+                &db_txn,
+                new_block.number,
+                new_block.hash,
+            )
+            .unwrap();
+
+            pathfinder_storage::ContractUpdatesTable::insert(
+                &db_txn,
+                new_block.number,
+                contract_address,
+                class_hash,
+            )
+            .unwrap();
+
+            pathfinder_storage::ContractCodeTable::update_block_number_if_null(
+                &db_txn,
+                class_hash,
+                new_block.number,
+            )
+            .unwrap();
+
             // Persist
             db_txn.commit().unwrap();
 

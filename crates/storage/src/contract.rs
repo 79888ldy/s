@@ -2,10 +2,11 @@ use crate::types::{CompressedCasmClass, CompressedContract};
 use anyhow::Context;
 use flate2::{write::GzEncoder, Compression};
 use pathfinder_common::{
-    CasmHash, ClassCommitmentLeafHash, ClassHash, ContractClass, StarknetBlockNumber,
+    CasmHash, ClassCommitmentLeafHash, ClassHash, ContractAddress, ContractClass,
+    StarknetBlockNumber,
 };
 use pathfinder_serde::extract_program_and_entry_points_by_type;
-use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
+use rusqlite::{named_params, params, Connection, OptionalExtension, Transaction};
 
 /// Stores StarkNet contract information, specifically a contract's
 ///
@@ -242,6 +243,26 @@ impl ClassCommitmentLeavesTable {
             ":hash": hash,
             ":compiled_class_hash": compiled_class_hash,
         })?;
+
+        Ok(())
+    }
+}
+
+/// Stores deployed contracts.
+pub struct ContractUpdatesTable;
+
+impl ContractUpdatesTable {
+    pub fn insert(
+        transaction: &Transaction<'_>,
+        block_number: StarknetBlockNumber,
+        contract_address: ContractAddress,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<()> {
+        let mut insert_contract = transaction
+        .prepare_cached("INSERT INTO contract_updates (block_number, contract_address, class_hash) VALUES (?, ?, ?)")
+        .context("Preparing contract insert statement")?;
+
+        insert_contract.execute(params![block_number, contract_address, class_hash])?;
 
         Ok(())
     }
